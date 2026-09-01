@@ -13,6 +13,7 @@ import 'services/theme_service.dart';
 import 'services/webrtc_ice.dart';
 import 'services/shorebird_update_service.dart';
 import 'services/transport_mode_service.dart';
+import 'services/dyhanie_key/dyhanie_key.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,11 @@ void main() async {
   await ThemeController.instance.init();
   await WebRtcIce.load();
   await TransportModeService.instance.init();
+  try {
+    await DyhanieKey.instance.init();
+  } catch (e) {
+    debugPrint('[dyhaniekey] init failed: $e');
+  }
 
   if (!kIsWeb) {
     try {

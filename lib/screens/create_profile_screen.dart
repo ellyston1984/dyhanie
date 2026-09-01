@@ -10,7 +10,7 @@ import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/dyhanie_api.dart';
 import '../services/avatar_cache.dart';
-import 'home_screen.dart';
+import 'recovery_phrase_screen.dart';
 
 class CreateProfileScreen extends StatefulWidget {
   const CreateProfileScreen({super.key});
@@ -35,6 +35,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     );
     if (img != null) {
       final bytes = await img.readAsBytes();
+      if (!mounted) return;
       setState(() => _avatar = bytes);
     }
   }
@@ -96,7 +97,12 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(
+          builder: (_) => const RecoveryPhraseScreen(
+            forceComplete: true,
+            popOnDone: false,
+          ),
+        ),
       );
     } on TimeoutException catch (e) {
       if (!mounted) return;

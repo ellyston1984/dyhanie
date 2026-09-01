@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+
+import '../compat/local_fs.dart';
 
 /// PiP-окно камеры поверх чата.
 class VideoCaptureOverlay extends StatefulWidget {
@@ -118,9 +119,7 @@ class VideoCaptureOverlayState extends State<VideoCaptureOverlay> {
           ? 0
           : DateTime.now().difference(started).inMilliseconds;
       if (!send || ms < 400) {
-        try {
-          await File(file.path).delete();
-        } catch (_) {}
+        await deleteFilePath(file.path);
         widget.onCancel();
         return;
       }

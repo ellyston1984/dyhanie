@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/dyhanie_api.dart';
 import '../services/contact_invite_service.dart';
 import '../services/dialog_signal_service.dart';
 import '../services/font_service.dart';
@@ -18,7 +19,11 @@ import '../services/transport_mode_service.dart';
 import '../services/push/app_badge_aggregator.dart';
 import '../services/push/push_token_service.dart';
 import '../services/push/push_message_handler.dart';
+<<<<<<< HEAD
 import '../services/system_incoming_call/system_incoming_call.dart';
+=======
+import '../services/push/incoming_call_launch.dart';
+>>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
 
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
@@ -26,10 +31,10 @@ import 'chat_screen.dart';
 import 'contacts_screen.dart';
 import 'join_room_screen.dart';
 import 'profile_screen.dart';
-import 'recovery_phrase_screen.dart';
 import 'settings_screen.dart';
 import 'vpn_screen.dart';
 import 'welcome_screen.dart';
+import 'call_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -128,12 +133,19 @@ class _HomeScreenState extends State<HomeScreen> {
       username = name;
       avatarBytes = bytes;
     });
+<<<<<<< HEAD
     
+=======
+   
+    _startBadgeListeners(name);
+
+>>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
     if (name.isNotEmpty) {
       IncomingCallService.instance.attach(
         navKey: appNavigatorKey,
         myUsername: name,
       );
+<<<<<<< HEAD
       // когда заведёте фасад:
       SystemIncomingCall.instance.attach(
         navKey: appNavigatorKey,
@@ -155,9 +167,23 @@ class _HomeScreenState extends State<HomeScreen> {
                 forceComplete: true,
               ),
             ),
+=======
+      AppBadgeAggregator.instance.start();
+      unawaited(PushTokenService.instance.registerWithServer());
+
+      _pushEventsSub?.cancel();
+      _pushEventsSub = const EventChannel('su.dyhanie/push_events')
+          .receiveBroadcastStream()
+          .listen((e) {
+        if (e is Map) {
+          unawaited(
+            PushMessageHandler.instance.handle(Map<String, dynamic>.from(e)),
+>>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
           );
-        });
-      }
+        }
+      });
+
+      unawaited(_handleIncomingCallLaunch(name));
     }
     // один раз за жизнь State
     _pushEventsSub?.cancel();
@@ -170,6 +196,64 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       }
     });
+  }
+
+  Future<void> _handleIncomingCallLaunch(String myName) async {
+    final raw = await IncomingCallLaunch.instance.take();
+    if (raw == null || !mounted) return;
+
+    final from = (raw['from'] ?? '').toString();
+    final room = (raw['room'] ?? '').toString();
+    if (from.isEmpty || room.isEmpty) return;
+
+    final api = DyhanieApi.instance;
+    try {
+      if (!api.isConnected) await api.connect();
+    } catch (_) {}
+
+    if (IncomingCallLaunch.instance.isDecline(raw)) {
+      try {
+        await api.request('signal', payload: {
+          'room': room,
+          'to': from,
+          'kind': 'call_decline',
+        });
+      } catch (_) {}
+      try {
+        await api.request('call.pending_clear', payload: {});
+      } catch (_) {}
+      return;
+    }
+
+    if (!IncomingCallLaunch.instance.isAccept(raw)) return;
+
+    Map<String, dynamic>? offer;
+    try {
+      final res = await api.request('call.pending_offer', payload: {});
+      final payload = res['payload'] ?? res;
+      if (payload is Map && payload['offer'] is Map) {
+        final o = Map<String, dynamic>.from(payload['offer'] as Map);
+        offer = o['data'] is Map
+            ? Map<String, dynamic>.from(o['data'] as Map)
+            : o;
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CallScreen(
+          roomCode: room,
+          username: myName,
+          otherUser: from,
+          isIncoming: true,
+          initialOffer: offer,
+        ),
+      ),
+    );
+    try {
+      await api.request('call.pending_clear', payload: {});
+    } catch (_) {}
   }
 
   void _recalcBadge() {

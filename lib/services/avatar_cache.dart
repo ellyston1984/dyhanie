@@ -125,48 +125,6 @@ class AvatarCache {
     }
   }
 
-  static Future<Uint8List?> _refreshFromNetwork(
-    String u,
-    int localTs, {
-    String? bindUsername,
-    Uint8List? fallback,
-  }) async {
-    try {
-      final api = DyhanieApi.instance;
-      if (!api.isConnected) {
-        await api.connect();
-      }
-      // bind не обязателен для avatar.get, но если передали — привяжем
-      final bind = bindUsername?.toLowerCase().trim();
-      if (bind != null &&
-          bind.isNotEmpty &&
-          api.boundUsername != bind) {
-        try {
-          await api.sessionBind(bind);
-        } catch (_) {}
-      }
-
-      final r = await api.avatarGetWithMeta(u);
-      if (r == null) return fallback ?? await load(u);
-
-      final b64 = r['data']?.toString();
-      final remoteTs = r['updated_at'] is int
-          ? r['updated_at'] as int
-          : int.tryParse('${r['updated_at']}') ?? 0;
-
-      if (b64 == null || b64.isEmpty) return fallback ?? await load(u);
-
-      if (remoteTs >= localTs || localTs == 0) {
-        await save(u, b64, updatedAt: remoteTs > 0 ? remoteTs : null);
-        return _decode(b64) ?? fallback;
-      }
-
-      return fallback ?? await load(u) ?? _decode(b64);
-    } catch (_) {
-      return fallback ?? await load(u);
-    }
-  }
-
   static Future<void> remove(String username) async {
     final prefs = await SharedPreferences.getInstance();
     final u = username.toLowerCase().trim();

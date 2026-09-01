@@ -1,9 +1,9 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
+
+import 'video_open.dart';
 
 class VideoMessageBubble extends StatefulWidget {
   final String base64Data;
@@ -41,10 +41,10 @@ class _VideoMessageBubbleState extends State<VideoMessageBubble> {
     if (_controller != null && _ready) {
       if (_controller!.value.isPlaying) {
         await _controller!.pause();
-        setState(() => _playing = false);
+        if (mounted) setState(() => _playing = false);
       } else {
         await _controller!.play();
-        setState(() => _playing = true);
+        if (mounted) setState(() => _playing = true);
       }
       return;
     }
@@ -55,13 +55,7 @@ class _VideoMessageBubbleState extends State<VideoMessageBubble> {
           ? widget.base64Data.split(',').last.trim()
           : widget.base64Data.trim();
       final bytes = base64Decode(clean);
-      final dir = await getTemporaryDirectory();
-      final file = File(
-        '${dir.path}/vid_${widget.messageKey.hashCode}.mp4',
-      );
-      await file.writeAsBytes(bytes, flush: true);
-
-      final c = VideoPlayerController.file(file);
+      final c = await openVideoFromBytes(bytes, widget.messageKey);
       await c.initialize();
       c.setLooping(true);
       c.addListener(() {

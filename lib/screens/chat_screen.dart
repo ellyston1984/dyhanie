@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,8 +10,8 @@ import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:video_compress/video_compress.dart';
 
+import '../compat/local_fs.dart';
 import '../services/chat_history_service.dart';
-import '../services/chat_wipe_service.dart';
 import '../services/dialog_signal_service.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
@@ -58,7 +56,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   final _picker = ImagePicker();
   final _scroll = ScrollController();
   final _dialogSignals = DialogSignalService();
-  final _wipe = ChatWipeService();
   final _history = ChatHistoryService();
   final _audioRecorder = AudioRecorder();
 
@@ -67,8 +64,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   bool _mediaActuallyRecording = false;
   bool _showVideoOverlay = false;
   final _videoOverlayKey = GlobalKey<VideoCaptureOverlayState>();
-  bool _videoOverlayReady = false;
   bool _micReady = false;
+  StreamSubscription? _presenceSub;
 
   Timer? _presenceTimer;
   bool _presenceBusy = false;
@@ -271,25 +268,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (b64 != null) {
         m['media'] = b64;
       }
-    }
-  }
-
-  Future<void> _hydrateOne(Map<String, dynamic> msg) async {
-    final path = msg['media_path']?.toString();
-    if (path == null || path.isEmpty) return;
-
-    final has = (msg['media']?.toString().isNotEmpty ?? false) ||
-        (msg['image']?.toString().isNotEmpty ?? false);
-    if (has) return;
-
-    final b64 = await MediaMessageCache.instance.getBase64(path);
-    if (b64 == null || b64.isEmpty) return;
-
-    final t = msg['msg_type']?.toString() ?? '';
-    if (t == 'image') {
-      msg['image'] = b64;
-    } else {
-      msg['media'] = b64;
     }
   }
 
@@ -750,8 +728,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       'duration_ms': data['duration_ms'],
       'mime': data['mime'],
     };
+    if (!mounted) return;
     setState(() => messages = [...messages, msg]);
-    if (!isSavedChat && (msg['ttl'] as int) > 0) _startTimer(msg);
+    final ttl = msg['ttl'] is int
+        ? msg['ttl'] as int
+        : int.tryParse('${msg['ttl']}') ?? 0;
+    if (!isSavedChat && ttl > 0) _startTimer(msg);
     HapticFeedback.mediumImpact();
     SystemSound.play(SystemSoundType.click);
     _scrollEnd();
@@ -816,7 +798,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         _showVideoOverlay = true;
-        _videoOverlayReady = false;
       });
       return;
     }
@@ -868,7 +849,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         _showVideoOverlay = false;
-        _videoOverlayReady = false;
       });
     }
 
@@ -890,7 +870,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         return;
       }
 
-      final bytes = await File(out).readAsBytes();
+      final bytes = await readFileBytes(out) ?? Uint8List(0);
       if (bytes.isEmpty || bytes.length < 1000) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -933,9 +913,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         );
       }
     } finally {
-      try {
-        await File(path).delete();
-      } catch (_) {}
+      await deleteFilePath(path);
       try {
         await VideoCompress.deleteAllCache();
       } catch (_) {}
@@ -977,19 +955,14 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         : DateTime.now().difference(started).inMilliseconds;
 
     if (ms < 400) {
-      try {
-        await File(path).delete();
-      } catch (_) {}
+      await deleteFilePath(path);
       return;
     }
 
-    final file = File(path);
-    if (!await file.exists()) return;
+    if (!await fileExists(path)) return;
 
-    final bytes = await file.readAsBytes();
-    try {
-      await file.delete();
-    } catch (_) {}
+    final bytes = await readFileBytes(path) ?? Uint8List(0);
+    await deleteFilePath(path);
 
     if (bytes.isEmpty || bytes.length > 500000) {
       if (mounted && bytes.length > 500000) {
@@ -1034,7 +1007,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       if (mounted) {
         setState(() {
           _showVideoOverlay = false;
-          _videoOverlayReady = false;
         });
       }
       return;
@@ -1050,9 +1022,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     _mediaRecordPath = null;
     _mediaRecordStarted = null;
     if (p != null) {
-      try {
-        await File(p).delete();
-      } catch (_) {}
+      await deleteFilePath(p);
     }
   }
 
@@ -1107,11 +1077,16 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   void _startTimer(Map<String, dynamic> msg) {
     if (isSavedChat) return;
-    final key = msg['key'] as String;
-    final ttl = (msg['ttl'] as int?) ?? 0;
+    final key = msg['key']?.toString() ?? '';
+    if (key.isEmpty) return;
+    final ttl = msg['ttl'] is int
+        ? msg['ttl'] as int
+        : int.tryParse('${msg['ttl']}') ?? 0;
     if (ttl <= 0) return;
 
-    final created = msg['timestamp'] as int;
+    final created = msg['timestamp'] is int
+        ? msg['timestamp'] as int
+        : int.tryParse('${msg['timestamp']}') ?? 0;
     var remaining =
         ttl - ((DateTime.now().millisecondsSinceEpoch - created) ~/ 1000);
     if (remaining <= 0) {
@@ -1309,11 +1284,11 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       final p = m['payload'];
       if (p is! Map) return;
 
-      final room = p['room']?.toString() ?? '';
-      if (room != widget.roomCode) return;
+      final room = (p['room']?.toString() ?? '').toLowerCase().trim();
+      if (room != widget.roomCode.toLowerCase().trim()) return;
 
-      final from = p['from']?.toString() ?? '';
-      if (from.isEmpty || from == widget.username) return;
+      final from = (p['from']?.toString() ?? '').toLowerCase().trim();
+      if (from.isEmpty || from == widget.username.toLowerCase().trim()) return;
 
       final kind = p['kind']?.toString() ?? '';
       if (kind != 'call_offer') return;
@@ -1361,7 +1336,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   }
 
   void _listenChatPresence() {
-    DyhanieApi.instance.events.listen((m) {
+    _presenceSub?.cancel();
+    _presenceSub = DyhanieApi.instance.events.listen((m) {
       if (m['type']?.toString() != 'signal') return;
       final p = m['payload'];
       if (p is! Map) return;
@@ -1563,6 +1539,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       );
                       if (img != null) {
                         final b = await img.readAsBytes();
+                        if (!mounted) return;
                         setState(() => backgroundBytes = b);
                       }
                     },
@@ -1642,6 +1619,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     _stopPresencePolling();
+    _presenceSub?.cancel();
     IncomingCallService.instance.setChatHandlingRoom(null);
     WidgetsBinding.instance.removeObserver(this);
     UnreadChatsService.instance.startListening();
@@ -1710,9 +1688,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
             onCall: _startCall,
             onToggleWipe: () async {
               setState(() => wipeOnExit = !wipeOnExit);
+              final messenger = ScaffoldMessenger.of(context);
               await _saveChatConfig();
               if (!mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
+              messenger.showSnackBar(
                 SnackBar(
                   content: Text(
                     wipeOnExit ? L.t('wipe_on_exit') : L.t('keep_on_exit'),
@@ -1835,7 +1814,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                   key: _videoOverlayKey,
                   maxSeconds: 20,
                   onReady: () {
-                    _videoOverlayReady = true;
                     _videoOverlayKey.currentState?.startRecording();
                   },
                   onFinished: (path, ms) {
@@ -1845,7 +1823,6 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     if (mounted) {
                       setState(() {
                         _showVideoOverlay = false;
-                        _videoOverlayReady = false;
                       });
                     }
                   },

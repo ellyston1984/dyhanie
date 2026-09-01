@@ -1,9 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 
 import '../services/font_service.dart';
 
@@ -48,6 +47,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
   bool _loading = false;
   Duration _pos = Duration.zero;
   Duration _total = Duration.zero;
+  StreamSubscription? _completeSub;
+  StreamSubscription? _posSub;
+  StreamSubscription? _durSub;
 
   @override
   void initState() {
@@ -57,7 +59,8 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
       _total = Duration(milliseconds: ms.clamp(0, 60000));
     }
 
-    VoicePlayback.instance.player.onPlayerComplete.listen((_) {
+    final player = VoicePlayback.instance.player;
+    _completeSub = player.onPlayerComplete.listen((_) {
       if (!mounted) return;
       if (VoicePlayback.instance.currentKey == widget.messageKey) {
         setState(() {
@@ -68,20 +71,28 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
       }
     });
 
-    VoicePlayback.instance.player.onPositionChanged.listen((d) {
+    _posSub = player.onPositionChanged.listen((d) {
       if (!mounted) return;
       if (VoicePlayback.instance.currentKey == widget.messageKey) {
         setState(() => _pos = d);
       }
     });
 
-    VoicePlayback.instance.player.onDurationChanged.listen((d) {
+    _durSub = player.onDurationChanged.listen((d) {
       if (!mounted) return;
       if (VoicePlayback.instance.currentKey == widget.messageKey &&
           d.inMilliseconds > 0) {
         setState(() => _total = d);
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _completeSub?.cancel();
+    _posSub?.cancel();
+    _durSub?.cancel();
+    super.dispose();
   }
 
   String _fmt(Duration d) {
@@ -117,14 +128,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
           ? widget.base64Data.split(',').last.trim()
           : widget.base64Data.trim();
       final bytes = base64Decode(clean);
-      final dir = await getTemporaryDirectory();
-      final file = File(
-        '${dir.path}/voice_play_${widget.messageKey.hashCode}.m4a',
-      );
-      await file.writeAsBytes(bytes, flush: true);
 
       vp.currentKey = widget.messageKey;
-      await vp.player.play(DeviceFileSource(file.path));
+      await vp.player.play(BytesSource(bytes));
       if (mounted) {
         setState(() {
           _playing = true;

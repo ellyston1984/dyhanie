@@ -105,13 +105,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _msgSignalSub = _signals.listenMySignals(
       myUsername: widget.myUsername,
       onSignals: (map) {
-        int count = 0;
-        map.forEach((_, data) {
-          final type = data['type']?.toString() ?? '';
-          if (type == 'pending_in' || type == 'come_online') count++;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          int count = 0;
+          map.forEach((_, data) {
+            final type = data['type']?.toString() ?? '';
+            if (type == 'pending_in' || type == 'come_online') count++;
+          });
+          setState(() => incomingMessagesCount = count);
         });
-        if (!mounted) return;
-        setState(() => incomingMessagesCount = count);
       },
     );
   }
@@ -144,6 +146,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final notesRaw = prefs.getString('contact_notes');
     final soundsRaw = prefs.getString('contact_sounds');
     final blockedList = await _invites.getBlocked();
+    if (!mounted) return;
 
     setState(() {
       contacts = raw;
@@ -255,8 +258,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
     if (!mounted) return;
     setState(() {
-      incomingInvites =
-          incomingInvites.where((e) => e['from']?.toString() != from).toList();
+      incomingInvites = incomingInvites
+          .where((e) =>
+              e['from']?.toString().toLowerCase().trim() !=
+              from.toLowerCase().trim())
+          .toList();
     });
     await _load();
     _loadAvatarsFor([from]);
@@ -275,8 +281,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
     if (!mounted) return;
     setState(() {
-      incomingInvites =
-          incomingInvites.where((e) => e['from']?.toString() != from).toList();
+      incomingInvites = incomingInvites
+          .where((e) =>
+              e['from']?.toString().toLowerCase().trim() !=
+              from.toLowerCase().trim())
+          .toList();
     });
   }
 
@@ -287,8 +296,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
     if (!mounted) return;
     setState(() {
-      outgoingInvites =
-          outgoingInvites.where((e) => e['to']?.toString() != to).toList();
+      outgoingInvites = outgoingInvites
+          .where((e) =>
+              e['to']?.toString().toLowerCase().trim() !=
+              to.toLowerCase().trim())
+          .toList();
     });
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -337,11 +349,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       myUsername: widget.myUsername,
       fromUsername: name,
     );
-    await _load();
-  }
-
-  Future<void> _unblock(String name) async {
-    await _invites.unblockUser(name);
     await _load();
   }
 

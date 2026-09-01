@@ -1,8 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 
 import 'dyhanie_api.dart';
+import 'dyhanie_key/dyhanie_key.dart';
+import 'dyhanie_key/dyhanie_key_api.dart';
+import 'dyhanie_key/session.dart';
 import 'webrtc_ice.dart';
 
 /// WebRTC DataChannel P2P для 1:1 чата.
@@ -33,6 +38,7 @@ class P2PService {
   StreamSubscription? _signalSub;
   Timer? _reofferTimer;
   Timer? _openTimeout;
+  DyhanieSession? _crypto;
 
   /// Младший username по compareTo — offerer (impolite).
   bool _isOfferer = false;
@@ -211,11 +217,11 @@ class P2PService {
     final p = msg['payload'];
     if (p is! Map) return;
 
-    final room = p['room']?.toString() ?? '';
+    final room = (p['room']?.toString() ?? '').toLowerCase().trim();
     final from = (p['from']?.toString() ?? '').toLowerCase().trim();
     final kind = p['kind']?.toString() ?? '';
 
-    if (room != roomCode) return;
+    if (room != roomCode.toLowerCase().trim()) return;
     if (from != _peer) return;
 
     final data = p['data'];
@@ -345,15 +351,16 @@ class P2PService {
 
   void _setupChannel(RTCDataChannel channel) {
     channel.onMessage = (message) {
-      final t = message.text;
-      if (t.isNotEmpty) {
-        _messageController.add(t);
+      if (message.isBinary) {
+        final bin = message.binary;
+        unawaited(_crypto?.handlePacket(Uint8List.fromList(bin)));
+        return;
       }
     };
     channel.onDataChannelState = (state) {
       _statusController.add('dc:$state');
       if (state == RTCDataChannelState.RTCDataChannelOpen) {
-        _markOpen();
+        unawaited(_startCrypto());
       }
       if (state == RTCDataChannelState.RTCDataChannelClosed ||
           state == RTCDataChannelState.RTCDataChannelClosing) {
@@ -364,11 +371,68 @@ class P2PService {
     };
   }
 
+  Future<void> _startCrypto() async {
+    if (_closed) return;
+    final key = DyhanieKey.instance;
+    if (!key.hasIdentity) {
+      _statusController.add('crypto_no_identity');
+      return;
+    }
+    try {
+      _crypto?.destroy();
+      _crypto = key.attachSession(
+        peerId: _peer,
+        onSend: (pkt) {
+          if (_closed || _channel == null) return;
+          try {
+            _channel!.send(RTCDataChannelMessage.fromBinary(pkt));
+          } catch (e) {
+            _statusController.add('crypto_send_err:$e');
+          }
+        },
+        onPlaintext: (plain) {
+          if (_closed) return;
+          final t = utf8.decode(plain, allowMalformed: true);
+          if (t.isNotEmpty) _messageController.add(t);
+        },
+        onState: (s) {
+          if (_closed) return;
+          _statusController.add('crypto:$s');
+          if (s == SessionState.active) {
+            unawaited(_onCryptoActive());
+          } else if (s == SessionState.destroyed) {
+            _statusController.add('crypto_fail:${_crypto?.lastError ?? ''}');
+          }
+        },
+      );
+      await _crypto!.start();
+    } catch (e) {
+      _statusController.add('crypto_err:$e');
+    }
+  }
+
+  Future<void> _onCryptoActive() async {
+    if (_closed) return;
+    final pack = _crypto?.remotePack;
+    if (pack != null) {
+      final tofu = await DyhanieKey.instance.rememberPeer(_peer, pack);
+      if (_closed) return;
+      if (tofu == TofuCheck.changed) {
+        _crypto?.fail('tofu_changed');
+        _statusController.add('crypto_key_changed');
+        return;
+      }
+      if (tofu == TofuCheck.first) {
+        _statusController.add('crypto_first_contact');
+      }
+    }
+    _markOpen();
+  }
+
   /// Open только если DC реально open.
   void _tryMarkOpenFromDc() {
     if (_closed || _opened) return;
-    final ch = _channel;
-    if (ch != null && ch.state == RTCDataChannelState.RTCDataChannelOpen) {
+    if (_crypto?.state == SessionState.active) {
       _markOpen();
     }
   }
@@ -389,8 +453,10 @@ class P2PService {
 
   void send(String text) {
     if (!isOpen) return;
+    final crypto = _crypto;
+    if (crypto == null || crypto.state != SessionState.active) return;
     try {
-      _channel!.send(RTCDataChannelMessage(text));
+      unawaited(crypto.sendPlaintext(Uint8List.fromList(utf8.encode(text))));
     } catch (e) {
       _statusController.add('send_err:$e');
     }
@@ -406,6 +472,8 @@ class P2PService {
   Future<void> dispose() async {
     _closed = true;
     _opened = false;
+    _crypto?.destroy();
+    _crypto = null;
     _reofferTimer?.cancel();
     _reofferTimer = null;
     _openTimeout?.cancel();

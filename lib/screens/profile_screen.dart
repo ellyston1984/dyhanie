@@ -118,6 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (img == null) return;
 
     final bytes = await img.readAsBytes();
+    if (!mounted) return;
     setState(() => avatarBytes = bytes);
 
     try {

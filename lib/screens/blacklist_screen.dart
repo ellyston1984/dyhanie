@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import '../services/avatar_cache.dart';
 import '../services/contact_invite_service.dart';
 import '../services/font_service.dart';
-import '../services/icon_style_service.dart';
 import '../services/locale_service.dart';
 
 class BlacklistScreen extends StatefulWidget {

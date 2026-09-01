@@ -1,27 +1,24 @@
 import 'dart:convert';
-import 'dart:io';
 
-import 'package:path_provider/path_provider.dart';
+import '../compat/local_fs.dart';
 
 /// Локальный кэш voice/video (и при желании image) рядом с историей чата.
 class MediaMessageCache {
   MediaMessageCache._();
   static final instance = MediaMessageCache._();
 
-  Future<Directory> _dirForRoom(String roomCode) async {
-    final root = await getApplicationDocumentsDirectory();
+  Future<String> _dirForRoom(String roomCode) async {
+    final root = await documentsPath();
+    if (root.isEmpty) return '';
     final safe = roomCode.replaceAll(RegExp(r'[^\w\-\.]'), '_');
-    final dir = Directory('${root.path}/chat_media/$safe');
-    if (!await dir.exists()) {
-      await dir.create(recursive: true);
-    }
-    return dir;
+    return createDir('$root/chat_media/$safe');
   }
 
   Future<String> _path(String roomCode, String msgKey, String ext) async {
     final dir = await _dirForRoom(roomCode);
+    if (dir.isEmpty) return '';
     final safeKey = msgKey.replaceAll(RegExp(r'[^\w\-\.]'), '_');
-    return '${dir.path}/$safeKey.$ext';
+    return '$dir/$safeKey.$ext';
   }
 
   String _extFor(String? msgType, String? mime) {
@@ -53,7 +50,8 @@ class MediaMessageCache {
       if (bytes.isEmpty) return null;
       final ext = _extFor(msgType, mime);
       final path = await _path(roomCode, msgKey, ext);
-      await File(path).writeAsBytes(bytes, flush: true);
+      if (path.isEmpty) return null;
+      await writeFileBytes(path, bytes);
       return path;
     } catch (_) {
       return null;
@@ -64,10 +62,8 @@ class MediaMessageCache {
   Future<String?> getBase64(String? path) async {
     if (path == null || path.isEmpty) return null;
     try {
-      final f = File(path);
-      if (!await f.exists()) return null;
-      final bytes = await f.readAsBytes();
-      if (bytes.isEmpty) return null;
+      final bytes = await readFileBytes(path);
+      if (bytes == null || bytes.isEmpty) return null;
       return base64Encode(bytes);
     } catch (_) {
       return null;
@@ -76,10 +72,7 @@ class MediaMessageCache {
 
   Future<void> deletePath(String? path) async {
     if (path == null || path.isEmpty) return;
-    try {
-      final f = File(path);
-      if (await f.exists()) await f.delete();
-    } catch (_) {}
+    await deleteFilePath(path);
   }
 
   Future<void> deleteKey({
@@ -88,13 +81,9 @@ class MediaMessageCache {
   }) async {
     try {
       final dir = await _dirForRoom(roomCode);
-      if (!await dir.exists()) return;
+      if (dir.isEmpty) return;
       final safeKey = msgKey.replaceAll(RegExp(r'[^\w\-\.]'), '_');
-      await for (final e in dir.list()) {
-        if (e is File && e.path.contains(safeKey)) {
-          await e.delete();
-        }
-      }
+      await deleteFilesMatching(dir, safeKey);
     } catch (_) {}
   }
 
@@ -102,9 +91,7 @@ class MediaMessageCache {
   Future<void> clearRoom(String roomCode) async {
     try {
       final dir = await _dirForRoom(roomCode);
-      if (await dir.exists()) {
-        await dir.delete(recursive: true);
-      }
+      if (dir.isNotEmpty) await deleteDirRecursive(dir);
     } catch (_) {}
   }
 }

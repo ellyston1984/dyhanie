@@ -19,32 +19,68 @@ class DyhanieApi {
   String? boundUsername;
   bool get isConnected => _ch != null && _alive;
   bool _alive = false;
+  bool _manualDisconnect = true;
+  Future<void>? _connectFuture;
+  String _url = defaultWsUrl;
+  int _reconnectAttempt = 0;
+  int _socketGen = 0;
+  Timer? _reconnectTimer;
 
   /// События без ответа на id: signal, msg.incoming, room.join_requested, ...
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   Future<void> connect({String url = defaultWsUrl}) async {
-    await disconnect();
-    final uri = Uri.parse(url);
-    _ch = WebSocketChannel.connect(uri);
-    _alive = true;
-    _sub = _ch!.stream.listen(
-      _onData,
-      onError: (e) {
-        _alive = false;
-        _ch = null;
-        _failAll(e);
-      },
-      onDone: () {
-        _alive = false;
-        _ch = null;
-        boundUsername = null;
-        _failAll(StateError('ws closed'));
-      },
-    );
+    _url = url;
+    _manualDisconnect = false;
+    _reconnectTimer?.cancel();
+    final inFlight = _connectFuture;
+    if (inFlight != null) return inFlight;
+
+    final done = Completer<void>();
+    _connectFuture = done.future;
+    try {
+      await _closeSocket();
+      final gen = _socketGen;
+      final uri = Uri.parse(_url);
+      _ch = WebSocketChannel.connect(uri);
+      _alive = true;
+      _reconnectAttempt = 0;
+      _sub = _ch!.stream.listen(
+        _onData,
+        onError: (e) {
+          if (gen != _socketGen) return;
+          _alive = false;
+          _ch = null;
+          _failAll(e);
+          _scheduleReconnect();
+        },
+        onDone: () {
+          if (gen != _socketGen) return;
+          _alive = false;
+          _ch = null;
+          _failAll(StateError('ws closed'));
+          _scheduleReconnect();
+        },
+      );
+      if (!done.isCompleted) done.complete();
+    } catch (e) {
+      if (!done.isCompleted) done.completeError(e);
+      rethrow;
+    } finally {
+      _connectFuture = null;
+    }
   }
 
   Future<void> disconnect() async {
+    _manualDisconnect = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    boundUsername = null;
+    await _closeSocket();
+  }
+
+  Future<void> _closeSocket() async {
+    _socketGen++;
     _alive = false;
     await _sub?.cancel();
     _sub = null;
@@ -52,8 +88,29 @@ class DyhanieApi {
       await _ch?.sink.close();
     } catch (_) {}
     _ch = null;
-    boundUsername = null;
     _failAll(StateError('disconnected'));
+  }
+
+  void _scheduleReconnect() {
+    if (_manualDisconnect || _connectFuture != null || isConnected) return;
+    _reconnectTimer?.cancel();
+    final shift = _reconnectAttempt.clamp(0, 5);
+    final seconds = (1 << shift).clamp(1, 32);
+    _reconnectAttempt++;
+    _reconnectTimer = Timer(Duration(seconds: seconds), () async {
+      if (_manualDisconnect || isConnected) return;
+      final bind = boundUsername;
+      try {
+        await connect(url: _url);
+        if (bind != null && bind.isNotEmpty && isConnected) {
+          try {
+            await sessionBind(bind);
+          } catch (_) {}
+        }
+      } catch (_) {
+        _scheduleReconnect();
+      }
+    });
   }
 
   void _failAll(Object e) {

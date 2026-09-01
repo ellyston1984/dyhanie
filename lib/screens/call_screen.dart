@@ -97,8 +97,12 @@ class _CallScreenState extends State<CallScreen> {
       if (m['type']?.toString() != 'signal') return;
       final p = m['payload'];
       if (p is! Map) return;
-      if (p['room']?.toString() != widget.roomCode) return;
-      if ((p['from']?.toString() ?? '').toLowerCase() != other.toLowerCase()) {
+      if ((p['room']?.toString() ?? '').toLowerCase().trim() !=
+          widget.roomCode.toLowerCase().trim()) {
+        return;
+      }
+      if ((p['from']?.toString() ?? '').toLowerCase().trim() !=
+          other.toLowerCase().trim()) {
         return;
       }
 

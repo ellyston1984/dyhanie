@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../services/dyhanie_key/dyhanie_key_stub.dart';
+import '../services/dyhanie_key/dyhanie_key.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import '../services/icon_style_service.dart';
+import 'home_screen.dart';
 
 /// Показ резервной фразы (create). Заглушка без реальной крипты.
 class RecoveryPhraseScreen extends StatefulWidget {
@@ -68,6 +69,11 @@ class _RecoveryPhraseScreenState extends State<RecoveryPhraseScreen> {
       widget.onDone!();
     } else if (widget.popOnDone) {
       Navigator.pop(context, true);
+    } else if (widget.forceComplete) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+      );
     }
   }
 
@@ -106,23 +112,15 @@ class _RecoveryPhraseScreenState extends State<RecoveryPhraseScreen> {
                           fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 8),
-                      Text(
-                        L.t('recovery_phrase_stub_note'),
-                        style: FontService.style(
-                          color: onSurf.withValues(alpha: 0.4),
-                          fontSize: 12,
-                        ),
-                      ),
                       const SizedBox(height: 16),
                       Expanded(
                         child: GridView.builder(
                           gridDelegate:
                               const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            mainAxisSpacing: 8,
-                            crossAxisSpacing: 8,
-                            childAspectRatio: 2.4,
+                            crossAxisCount: 2,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: 2.6,
                           ),
                           itemCount: words?.length ?? 0,
                           itemBuilder: (_, i) {

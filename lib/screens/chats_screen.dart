@@ -48,65 +48,9 @@ class _ChatsScreenState extends State<ChatsScreen> {
     _sub = _signals.listenMySignals(
       myUsername: widget.myUsername,
       onSignals: (map) {
-        setState(() {
-          final keep = <String>{};
-
-          map.forEach((dialogId, data) {
-            final type = data['type']?.toString() ?? '';
-            final from = data['from']?.toString() ?? '';
-            final count = data['count'] is int
-                ? data['count'] as int
-                : int.tryParse('${data['count']}') ?? 1;
-            final ts = data['ts'] is int
-                ? data['ts'] as int
-                : int.tryParse('${data['ts']}') ?? 0;
-
-            final other =
-                _otherFromDialogId(dialogId, widget.myUsername) ?? from;
-            if (other.isEmpty) return;
-
-            keep.add(dialogId);
-            final prev = items[dialogId];
-            items[dialogId] = _ChatItem(
-              dialogId: dialogId,
-              otherUser: other,
-              incomingCount: type == 'pending_in'
-                  ? count
-                  : (type == 'come_online' ? 1 : (prev?.incomingCount ?? 0)),
-              comeOnline: type == 'come_online',
-              updatedAt: ts > 0 ? ts : (prev?.updatedAt ?? 0),
-              hasOutbox: prev?.hasOutbox ?? false,
-              isSaved: prev?.isSaved ?? false,
-              preview: prev?.preview ?? '',
-              avatarBytes: prev?.avatarBytes,
-            );
-          });
-
-          items.removeWhere(
-            (id, item) =>
-                !keep.contains(id) &&
-                !item.hasOutbox &&
-                !item.isSaved &&
-                !pinnedIds.contains(id),
-          );
-
-          for (final id in items.keys.toList()) {
-            if (!map.containsKey(id) || (map[id] as int?? 0) <= 0) {
-              final prev = items[id]!;
-              if (prev.incomingCount == 0 && !prev.comeOnline) continue;
-              items[id] = _ChatItem(
-                dialogId: prev.dialogId,
-                otherUser: prev.otherUser,
-                incomingCount: 0,
-                comeOnline: false,
-                updatedAt: prev.updatedAt,
-                hasOutbox: prev.hasOutbox,
-                isSaved: prev.isSaved,
-                preview: prev.preview,
-                avatarBytes: prev.avatarBytes,
-              );
-            }
-          }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _applySignals(map);
         });
       },
     );
@@ -119,9 +63,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
           final other = prev?.otherUser ??
               _otherFromDialogId(e.key, widget.myUsername) ??
               e.key;
-          final count = e.value is int
-              ? e.value as int
-              : int.tryParse('${e.value}') ?? 0;
+          final count = e.value;
           items[e.key] = _ChatItem(
             dialogId: e.key,
             otherUser: other,
@@ -153,6 +95,67 @@ class _ChatsScreenState extends State<ChatsScreen> {
           }
         }
       });
+    });
+  }
+
+  void _applySignals(Map<String, Map<String, dynamic>> map) {
+    setState(() {
+      final keep = <String>{};
+
+      map.forEach((dialogId, data) {
+        final type = data['type']?.toString() ?? '';
+        final from = data['from']?.toString() ?? '';
+        final count = data['count'] is int
+            ? data['count'] as int
+            : int.tryParse('${data['count']}') ?? 1;
+        final ts = data['ts'] is int
+            ? data['ts'] as int
+            : int.tryParse('${data['ts']}') ?? 0;
+
+        final other = _otherFromDialogId(dialogId, widget.myUsername) ?? from;
+        if (other.isEmpty) return;
+
+        keep.add(dialogId);
+        final prev = items[dialogId];
+        items[dialogId] = _ChatItem(
+          dialogId: dialogId,
+          otherUser: other,
+          incomingCount: type == 'pending_in'
+              ? count
+              : (type == 'come_online' ? 1 : (prev?.incomingCount ?? 0)),
+          comeOnline: type == 'come_online',
+          updatedAt: ts > 0 ? ts : (prev?.updatedAt ?? 0),
+          hasOutbox: prev?.hasOutbox ?? false,
+          isSaved: prev?.isSaved ?? false,
+          preview: prev?.preview ?? '',
+          avatarBytes: prev?.avatarBytes,
+        );
+      });
+
+      items.removeWhere(
+        (id, item) =>
+            !keep.contains(id) &&
+            !item.hasOutbox &&
+            !item.isSaved &&
+            !pinnedIds.contains(id),
+      );
+
+      for (final id in items.keys.toList()) {
+        if (map.containsKey(id)) continue;
+        final prev = items[id]!;
+        if (prev.incomingCount == 0 && !prev.comeOnline) continue;
+        items[id] = _ChatItem(
+          dialogId: prev.dialogId,
+          otherUser: prev.otherUser,
+          incomingCount: 0,
+          comeOnline: false,
+          updatedAt: prev.updatedAt,
+          hasOutbox: prev.hasOutbox,
+          isSaved: prev.isSaved,
+          preview: prev.preview,
+          avatarBytes: prev.avatarBytes,
+        );
+      }
     });
   }
 

@@ -35,11 +35,14 @@ class AppBadgeAggregator {
     unawaited(_sync());
   }
 
+<<<<<<< HEAD
   void setChatsBadge(int n) {
     _chats = n < 0 ? 0 : n;
     unawaited(_sync());
   }
 
+=======
+>>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
   Future<void> _sync() => AppIconBadge.instance.setCount(total);
 
   Future<void> clearAll() async {

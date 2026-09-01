@@ -7,13 +7,12 @@ enum SessionState {
 }
 
 abstract class DyhanieKeyApi {
-  /// 24 слова (mock или реальные позже).
+  /// 6 слов BIP-39 (64 бита энтропии + контрольная сумма).
   Future<List<String>> generateRecoveryPhrase();
 
-  /// Проверка + «восстановление» identity (stub: length == 24).
   Future<bool> restoreFromPhrase(List<String> words);
 
-  /// UI-only safety number, 60 цифр. Не криптостойко.
+  /// 60 цифр Safety Number.
   Future<String> safetyNumber({
     required String localId,
     required String remoteId,
@@ -23,6 +22,5 @@ abstract class DyhanieKeyApi {
 
   Future<void> destroySession(String peerId);
 
-  /// Заглушка handshake — всегда active через короткую задержку.
   Future<SessionState> simulateHandshake(String peerId);
 }

@@ -6,11 +6,10 @@ import 'package:flutter/services.dart';
 import '../screens/call_screen.dart';
 import 'dyhanie_api.dart';
 import 'contact_invite_service.dart';
+import '../services/incoming_call_gate.dart';
 
 final appNavigatorKey = GlobalKey<NavigatorState>();
 
-/// Входящие call_offer, пока приложение на переднем плане.
-/// Не заменяет FCM/CallKit (фон / убитое приложение).
 class IncomingCallService {
   IncomingCallService._();
   static final IncomingCallService instance = IncomingCallService._();
@@ -20,7 +19,6 @@ class IncomingCallService {
   String? _myUsername;
   bool _busy = false;
 
-  /// Room, который уже слушает открытый ChatScreen (не дублировать).
   String? chatHandlingRoom;
 
   void attach({
@@ -43,7 +41,8 @@ class IncomingCallService {
   }
 
   void setChatHandlingRoom(String? room) {
-    chatHandlingRoom = room;
+    final r = room?.toLowerCase().trim();
+    chatHandlingRoom = (r == null || r.isEmpty) ? null : r;
   }
 
   Future<void> _onEvent(Map<String, dynamic> m) async {
@@ -57,13 +56,13 @@ class IncomingCallService {
     final me = _myUsername;
     if (me == null || me.isEmpty) return;
 
-    final from = p['from']?.toString() ?? '';
+    final from = (p['from']?.toString() ?? '').toLowerCase().trim();
     if (from.isEmpty || from == me) return;
 
      // Чёрный список — звонок не открываем
     if (await ContactInviteService().isBlocked(from)) return;
 
-    final room = p['room']?.toString() ?? '';
+    final room = (p['room']?.toString() ?? '').toLowerCase().trim();
     if (room.isEmpty) return;
 
     // этот чат уже открыт — handler в ChatScreen
@@ -85,7 +84,10 @@ class IncomingCallService {
     Map? offer,
   }) async {
     final nav = _navKey?.currentState;
-    if (nav == null) return;
+    if (nav == null) {
+      IncomingCallGate.instance.unlock();
+      return;
+    }
 
     _busy = true;
     try {
@@ -103,6 +105,7 @@ class IncomingCallService {
       );
     } finally {
       _busy = false;
+      IncomingCallGate.instance.unlock();
     }
   }
 }

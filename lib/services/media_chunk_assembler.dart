@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'dart:convert';
 
 import 'media_chunk_codec.dart';
@@ -93,10 +92,6 @@ class MediaChunkAssembler {
     };
   }
 
-  String _encode(Uint8List bytes) {
-    // ignore: avoid_relative_lib_imports
-    return MediaChunkCodec.splitBase64(bytes).join(); // BAD
-  }
   void _gc() {
     final now = DateTime.now();
     _map.removeWhere((_, a) => now.difference(a.started) > _ttl);

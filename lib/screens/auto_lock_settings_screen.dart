@@ -25,6 +25,7 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
 
   Future<void> _load() async {
     await _svc.load();
+    if (!mounted) return;
     setState(() {
       if (_svc.mode == AutoLockMode.afterTimeout) {
         _slider =
@@ -39,6 +40,7 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
 
   Future<void> _persist() async {
     await _svc.save();
+    if (!mounted) return;
     setState(() {});
   }
 
@@ -107,51 +109,49 @@ class _AutoLockSettingsScreenState extends State<AutoLockSettingsScreen> {
               ),
             ),
           ),
-          RadioListTile<AutoLockMode>(
-            value: AutoLockMode.onMinimize,
+          RadioGroup<AutoLockMode>(
             groupValue: _svc.mode,
-            activeColor: onSurf,
-            title: Text(
-              L.t('lock_on_minimize'),
-              style: FontService.style(color: onSurf),
+            onChanged: (v) async {
+              if (!_svc.enabled || v == null) return;
+              setState(() => _svc.mode = v);
+              await _persist();
+            },
+            child: Column(
+              children: [
+                RadioListTile<AutoLockMode>(
+                  value: AutoLockMode.onMinimize,
+                  enabled: _svc.enabled,
+                  activeColor: onSurf,
+                  title: Text(
+                    L.t('lock_on_minimize'),
+                    style: FontService.style(color: onSurf),
+                  ),
+                  subtitle: Text(
+                    L.t('on_minimize_sub'),
+                    style: FontService.style(
+                      fontSize: 12,
+                      color: onSurf.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ),
+                RadioListTile<AutoLockMode>(
+                  value: AutoLockMode.afterTimeout,
+                  enabled: _svc.enabled,
+                  activeColor: onSurf,
+                  title: Text(
+                    L.t('lock_after_time'),
+                    style: FontService.style(color: onSurf),
+                  ),
+                  subtitle: Text(
+                    L.t('after_timeout_sub'),
+                    style: FontService.style(
+                      fontSize: 12,
+                      color: onSurf.withValues(alpha: 0.45),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            subtitle: Text(
-              L.t('on_minimize_sub'),
-              style: FontService.style(
-                fontSize: 12,
-                color: onSurf.withValues(alpha: 0.45),
-              ),
-            ),
-            onChanged: !_svc.enabled
-                ? null
-                : (v) async {
-                    if (v == null) return;
-                    setState(() => _svc.mode = v);
-                    await _persist();
-                  },
-          ),
-          RadioListTile<AutoLockMode>(
-            value: AutoLockMode.afterTimeout,
-            groupValue: _svc.mode,
-            activeColor: onSurf,
-            title: Text(
-              L.t('lock_after_time'),
-              style: FontService.style(color: onSurf),
-            ),
-            subtitle: Text(
-              L.t('after_timeout_sub'),
-              style: FontService.style(
-                fontSize: 12,
-                color: onSurf.withValues(alpha: 0.45),
-              ),
-            ),
-            onChanged: !_svc.enabled
-                ? null
-                : (v) async {
-                    if (v == null) return;
-                    setState(() => _svc.mode = v);
-                    await _persist();
-                  },
           ),
           if (_svc.enabled && _svc.mode == AutoLockMode.afterTimeout) ...[
             const SizedBox(height: 16),

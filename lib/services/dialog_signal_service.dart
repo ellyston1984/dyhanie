@@ -44,7 +44,7 @@ class DialogSignalService {
     required void Function(Map<String, Map<String, dynamic>> signalsByDialog)
         onSignals,
   }) {
-    onSignals({});
+    scheduleMicrotask(() => onSignals({}));
     return const Stream<void>.empty().listen((_) {});
   }
 

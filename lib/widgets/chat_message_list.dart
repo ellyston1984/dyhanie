@@ -115,7 +115,6 @@ class ChatMessageList extends StatelessWidget {
         final rem = remaining[key];
         final text = msg['text']?.toString() ?? '';
         final isP2P = msg['p2p'] == true;
-        final status = msg['status']?.toString() ?? '';
         final img = (msg['image']?.toString().isNotEmpty ?? false)
             ? msg['image'].toString()
             : ((msg['msg_type']?.toString() == 'image')

@@ -42,6 +42,7 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     final pinSet = await _security.isPinSet();
+    if (!mounted) return;
 
     if (!pinSet) {
       Navigator.pushReplacement(
@@ -61,6 +62,7 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     final needLock = await _security.needsLockScreen();
+    if (!mounted) return;
     if (needLock) {
       Navigator.pushReplacement(
         context,

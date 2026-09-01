@@ -140,7 +140,10 @@ class CallWebRTCService {
     if (msg['type']?.toString() != 'signal') return;
     final p = msg['payload'];
     if (p is! Map) return;
-    if (p['room']?.toString() != roomCode) return;
+    if ((p['room']?.toString() ?? '').toLowerCase().trim() !=
+        roomCode.toLowerCase().trim()) {
+      return;
+    }
 
     final from = (p['from']?.toString() ?? '').toLowerCase().trim();
     if (from != otherUser.toLowerCase().trim()) return;

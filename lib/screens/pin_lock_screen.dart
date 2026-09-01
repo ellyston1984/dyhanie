@@ -21,6 +21,7 @@ class _PinLockScreenState extends State<PinLockScreen> {
   Future<void> _unlock() async {
     final pin = _ctrl.text.trim();
     final ok = await _security.checkPin(pin);
+    if (!mounted) return;
     if (!ok) {
       setState(() => _error = L.t('pin_wrong'));
       _ctrl.clear();

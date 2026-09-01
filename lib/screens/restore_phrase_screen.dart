@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../services/dyhanie_key/dyhanie_key_stub.dart';
+import '../services/dyhanie_key/dyhanie_key.dart';
+import '../services/dyhanie_key/protocol.dart';
 import '../services/font_service.dart';
 import '../services/locale_service.dart';
 import 'pin_setup_screen.dart';
@@ -19,13 +21,49 @@ class RestorePhraseScreen extends StatefulWidget {
 }
 
 class _RestorePhraseScreenState extends State<RestorePhraseScreen> {
-  final _ctrl = TextEditingController();
+  static const _n = DyhanieProtocol.wordCount;
+
+  late final List<TextEditingController> _ctrls;
+  late final List<FocusNode> _nodes;
   bool _busy = false;
 
   @override
+  void initState() {
+    super.initState();
+    _ctrls = List.generate(_n, (_) => TextEditingController());
+    _nodes = List.generate(_n, (_) => FocusNode());
+  }
+
+  @override
   void dispose() {
-    _ctrl.dispose();
+    for (final c in _ctrls) {
+      c.dispose();
+    }
+    for (final n in _nodes) {
+      n.dispose();
+    }
     super.dispose();
+  }
+
+  List<String> _words() => _ctrls
+      .map((c) => c.text.trim().toLowerCase())
+      .where((w) => w.isNotEmpty)
+      .toList();
+
+  void _applyPaste(String raw) {
+    final words = raw
+        .split(RegExp(r'[\s,;]+'))
+        .map((w) => w.trim().toLowerCase())
+        .where((w) => w.isNotEmpty)
+        .take(_n)
+        .toList();
+    if (words.length < 2) return;
+    for (var i = 0; i < _n; i++) {
+      _ctrls[i].text = i < words.length ? words[i] : '';
+    }
+    setState(() {});
+    final next = words.length < _n ? words.length : _n - 1;
+    _nodes[next].requestFocus();
   }
 
   Future<void> _resetLocalAccount() async {
@@ -46,20 +84,13 @@ class _RestorePhraseScreenState extends State<RestorePhraseScreen> {
       }
     }
     await prefs.setBool('recovery_phrase_shown', true);
-    await prefs.setBool('identity_restored_stub', true);
   }
 
   Future<void> _submit() async {
-    final raw = _ctrl.text.trim();
-    final words = raw
-        .split(RegExp(r'[\s,;]+'))
-        .map((w) => w.trim().toLowerCase())
-        .where((w) => w.isNotEmpty)
-        .toList();
-
-    if (words.length != 24) {
+    final words = _words();
+    if (words.length != _n) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L.t('restore_phrase_need_24'))),
+        SnackBar(content: Text(L.t('restore_phrase_need_6'))),
       );
       return;
     }
@@ -119,35 +150,61 @@ class _RestorePhraseScreenState extends State<RestorePhraseScreen> {
                   fontSize: 14,
                 ),
               ),
-              const SizedBox(height: 8),
-              Text(
-                L.t('recovery_phrase_stub_note'),
-                style: FontService.style(
-                  color: onSurf.withValues(alpha: 0.4),
-                  fontSize: 12,
-                ),
-              ),
               const SizedBox(height: 16),
               Expanded(
-                child: TextField(
-                  controller: _ctrl,
-                  maxLines: null,
-                  expands: true,
-                  textAlignVertical: TextAlignVertical.top,
-                  style: FontService.style(color: onSurf),
-                  decoration: InputDecoration(
-                    hintText: L.t('restore_phrase_placeholder'),
-                    hintStyle: TextStyle(color: onSurf.withValues(alpha: 0.3)),
-                    filled: true,
-                    fillColor: onSurf.withValues(alpha: 0.06),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
-                    ),
+                child: GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    childAspectRatio: 2.6,
                   ),
+                  itemCount: _n,
+                  itemBuilder: (_, i) {
+                    return TextField(
+                      controller: _ctrls[i],
+                      focusNode: _nodes[i],
+                      textInputAction: i == _n - 1
+                          ? TextInputAction.done
+                          : TextInputAction.next,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[a-zA-Z\s]')),
+                      ],
+                      style: FontService.style(color: onSurf, fontSize: 15),
+                      onChanged: (v) {
+                        if (v.contains(' ') || v.contains('\n')) {
+                          _applyPaste(v);
+                          return;
+                        }
+                        setState(() {});
+                      },
+                      onSubmitted: (_) {
+                        if (i < _n - 1) {
+                          _nodes[i + 1].requestFocus();
+                        } else {
+                          _submit();
+                        }
+                      },
+                      decoration: InputDecoration(
+                        prefixText: '${i + 1}.  ',
+                        prefixStyle: FontService.style(
+                          color: onSurf.withValues(alpha: 0.4),
+                          fontSize: 13,
+                        ),
+                        filled: true,
+                        fillColor: onSurf.withValues(alpha: 0.06),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    );
+                  },
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               FilledButton(
                 onPressed: _busy ? null : _submit,
                 child: _busy
