@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -19,11 +20,8 @@ import '../services/transport_mode_service.dart';
 import '../services/push/app_badge_aggregator.dart';
 import '../services/push/push_token_service.dart';
 import '../services/push/push_message_handler.dart';
-<<<<<<< HEAD
 import '../services/system_incoming_call/system_incoming_call.dart';
-=======
 import '../services/push/incoming_call_launch.dart';
->>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
 
 import 'auto_lock_settings_screen.dart';
 import 'chats_screen.dart';
@@ -35,6 +33,7 @@ import 'settings_screen.dart';
 import 'vpn_screen.dart';
 import 'welcome_screen.dart';
 import 'call_screen.dart';
+import 'recovery_phrase_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -102,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _loadProfile() async {
+    Future<void> _loadProfile() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('username') ?? '';
     final b64 = prefs.getString('avatar');
@@ -133,29 +132,36 @@ class _HomeScreenState extends State<HomeScreen> {
       username = name;
       avatarBytes = bytes;
     });
-<<<<<<< HEAD
-    
-=======
-   
+
     _startBadgeListeners(name);
 
->>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
     if (name.isNotEmpty) {
       IncomingCallService.instance.attach(
         navKey: appNavigatorKey,
         myUsername: name,
       );
-<<<<<<< HEAD
-      // когда заведёте фасад:
       SystemIncomingCall.instance.attach(
         navKey: appNavigatorKey,
         myUsername: name,
       );
       AppBadgeAggregator.instance.start();
       unawaited(PushTokenService.instance.registerWithServer());
-    }
-    _startBadgeListeners(name);
-    if (name.isNotEmpty) {
+
+      _pushEventsSub?.cancel();
+      _pushEventsSub = const EventChannel('su.dyhanie/push_events')
+          .receiveBroadcastStream()
+          .listen((e) {
+        if (e is Map) {
+          unawaited(
+            PushMessageHandler.instance.handle(
+              Map<String, dynamic>.from(e),
+            ),
+          );
+        }
+      });
+
+      unawaited(_handleIncomingCallLaunch(name));
+
       final shown = prefs.getBool('recovery_phrase_shown') ?? false;
       if (!shown) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -167,35 +173,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 forceComplete: true,
               ),
             ),
-=======
-      AppBadgeAggregator.instance.start();
-      unawaited(PushTokenService.instance.registerWithServer());
-
-      _pushEventsSub?.cancel();
-      _pushEventsSub = const EventChannel('su.dyhanie/push_events')
-          .receiveBroadcastStream()
-          .listen((e) {
-        if (e is Map) {
-          unawaited(
-            PushMessageHandler.instance.handle(Map<String, dynamic>.from(e)),
->>>>>>> f1159a9 (Push, incoming call launch, locale, avatar cache, related lib updates)
           );
-        }
-      });
-
-      unawaited(_handleIncomingCallLaunch(name));
-    }
-    // один раз за жизнь State
-    _pushEventsSub?.cancel();
-    _pushEventsSub = const EventChannel('su.dyhanie/push_events')
-        .receiveBroadcastStream()
-        .listen((e) {
-      if (e is Map) {
-        unawaited(
-          PushMessageHandler.instance.handle(Map<String, dynamic>.from(e)),
-        );
+        });
       }
-    });
+    }
   }
 
   Future<void> _handleIncomingCallLaunch(String myName) async {

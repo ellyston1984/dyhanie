@@ -13,14 +13,14 @@ class WebRtcIce {
 
   /// Заводские значения (можно сменить в настройках ICE).
   static const String defaultStun =
-      'stun:82.24.110.215:3478\nstun:stun.l.google.com:19302';
+      'stun:77.91.113.69:3478\nstun:stun.l.google.com:19302';
 
   static const String defaultTurn =
-      'turn:82.24.110.215:3478?transport=udp\n'
-      'turn:82.24.110.215:3478?transport=tcp';
+      'turn:77.91.113.69:3478?transport=udp\n'
+      'turn:77.91.113.69:3478?transport=tcp';
 
   static const String defaultTurnUser = 'dyhanie';
-  static const String defaultTurnPass = 'liza2007';
+  static const String defaultTurnPass = '';
 
   static String turnUrls = defaultTurn;
   static String turnUser = defaultTurnUser;
